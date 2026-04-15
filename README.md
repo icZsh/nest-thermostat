@@ -106,6 +106,3 @@ SKILL.md             # Hermes skill documentation
 **Auth code already used error**
 : The authorization code is single-use. Only call the token endpoint once per code.
 
-## License
-
-MIT
