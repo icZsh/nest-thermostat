@@ -1,108 +1,92 @@
 # Nest Thermostat Control
 
-Control Google Nest thermostats via the Smart Device Management (SDM) API with a clean Python client.
+A Hermes skill for controlling Google Nest thermostats via the SDM API.
 
-## Features
+## For Agents
 
-- OAuth 2.0 authentication with automatic token refresh
-- List devices and view thermostat status
-- Set temperature, mode, and eco settings
-- Async HTTP client for efficient API calls
-- No external dependencies beyond `httpx`
+### Installation
 
-## Prerequisites
-
-- Google Cloud project with SDM API enabled
-- Device Access Console project ([$5 one-time fee](https://console.nest.google.com/device-access))
-- OAuth 2.0 Web application credentials
-
-## Setup
-
-### 1. Google Cloud + Device Access
-
-1. Enable the SDM API at [console.cloud.google.com](https://console.cloud.google.com)
-2. Create OAuth 2.0 Web credentials (redirect URI: `http://localhost:8000/nest/callback`)
-3. Create a Device Access project at [console.nest.google.com/device-access](https://console.nest.google.com/device-access) ($5 fee)
-4. Link your OAuth client to the Device Access project
-
-### 2. Install
+This skill lives at `~/.hermes/skills/nest-thermostat/`. If not present, install it:
 
 ```bash
-pip install httpx
+mkdir -p ~/.hermes/skills
+git clone https://github.com/icZsh/nest-thermostat.git ~/.hermes/skills/nest-thermostat
 ```
 
-### 3. Configure
+### Loading
+
+Before use, load the skill to get the full documentation and context:
+
+```
+/skills view nest-thermostat
+```
+
+Or in a session, call `skill_view('nest-thermostat')`.
+
+### Usage
+
+After loading, the agent can execute the following commands via the `nest_google_sdm.py` CLI:
 
 ```bash
-mkdir -p ~/.config/nest
-touch ~/.config/nest/.env
+python3 ~/.hermes/skills/nest-thermostat/nest_google_sdm.py <command>
 ```
 
-Add to `~/.config/nest/.env`:
+#### Commands
+
+| Command | Description |
+|---|---|
+| `devices` | List all Nest devices |
+| `status [idx]` | Show thermostat status (current temp, humidity, mode, HVAC) |
+| `set-temp <F> [idx]` | Set target temperature (auto-detects HEAT/COOL mode) |
+| `set-mode HEAT\|COOL\|OFF [idx]` | Change thermostat mode |
+| `set-eco on\|off [idx]` | Toggle eco mode |
+| `oauth` | Run one-time OAuth authorization (requires browser) |
+
+### Configuration (required before first use)
+
+Create `~/.config/nest/.env` with:
 
 ```
-NEST_CLIENT_ID=your-client-id.apps.googleusercontent.com
-NEST_CLIENT_SECRET=your-client-secret
-NEST_SDM_PROJECT_ID=your-device-access-project-id
+NEST_CLIENT_ID=<from Google Cloud OAuth credentials>
+NEST_CLIENT_SECRET=<from Google Cloud OAuth credentials>
+NEST_SDM_PROJECT_ID=<from Device Access Console>
+NEST_ACCESS_TOKEN=<filled automatically after oauth>
+NEST_REFRESH_TOKEN=<filled automatically after oauth>
 ```
 
-### 4. Authorize (one-time)
+#### One-time OAuth
 
 ```bash
-python3 nest_google_sdm.py oauth
+python3 ~/.hermes/skills/nest-thermostat/nest_google_sdm.py oauth
 ```
 
-Open the printed URL in your browser. The callback is handled automatically.
+Prints a URL to open in a browser. Callback auto-handled on `http://localhost:8000/nest/callback`.
 
-## Usage
+### Cron Usage
 
-```bash
-# List devices
-python3 nest_google_sdm.py devices
-
-# View thermostat status
-python3 nest_google_sdm.py status
-
-# Set temperature (auto-detects mode: HEAT or COOL)
-python3 nest_google_sdm.py set-temp 72
-
-# Change mode
-python3 nest_google_sdm.py set-mode HEAT
-python3 nest_google_sdm.py set-mode COOL
-
-# Eco mode
-python3 nest_google_sdm.py set-eco on
-python3 nest_google_sdm.py set-eco off
-
-# Full help
-python3 nest_google_sdm.py help
-```
-
-## API Commands Reference
-
-| Command | SDM Command | Notes |
-|---|---|---|
-| `set-mode HEAT` | `sdm.devices.commands.ThermostatMode.SetMode` | |
-| `set-mode COOL` | `sdm.devices.commands.ThermostatMode.SetMode` | |
-| `set-mode OFF` | `sdm.devices.commands.ThermostatMode.SetMode` | |
-| `set-temp 72` | `SetHeat` / `SetCool` | Auto-detects current mode |
-| `set-eco on` | `sdm.devices.commands.ThermostatEco.SetMode` | MANUAL_ECO |
-
-## Project Structure
+For scheduled control, include these steps in the cron prompt:
 
 ```
-nest_google_sdm.py   # CLI client + OAuth server (single file)
-SKILL.md             # Hermes skill documentation
+1. Read access token: grep NEST_ACCESS_TOKEN ~/.hermes/.env
+2. Read project ID: grep NEST_PROJECT_ID ~/.hermes/.env
+3. Device name: enterprises/<project_id>/devices/<device_id>
 ```
 
-## Troubleshooting
+Common API commands:
 
-**Token refresh fails with `invalid_grant`**
-: The refresh token was revoked. Re-run `python3 nest_google_sdm.py oauth` to re-authorize.
+- **HEAT 75F**: POST `.../devices/{id}:executeCommand`
+  Body: `{"command": "sdm.devices.commands.ThermostatMode.SetMode", "params": {"mode": "HEAT"}}`
+  Then: `{"command": "sdm.devices.commands.ThermostatTemperatureSetpoint.SetHeat", "params": {"heatCelsius": 23.89}}`
 
-**Terminal truncates long tokens**
-: Tokens are always saved to `~/.config/nest/.env`. Never copy tokens from terminal output.
+- **OFF**: `{"command": "sdm.devices.commands.ThermostatMode.SetMode", "params": {"mode": "OFF"}}`
 
-**Auth code already used error**
-: The authorization code is single-use. Only call the token endpoint once per code.
+### Critical Pitfalls
 
+1. **Auth code is single-use** — exchange + save in one atomic operation. Never call token endpoint twice with same code.
+2. **Terminal truncates long tokens** — always read/write tokens from `.env` file, never from terminal echo.
+3. **Refresh token fails with `invalid_grant`** — token was revoked. Re-run `oauth`.
+4. **Hermes profile changes $HOME** — if running under a Hermes profile, credentials may be at `~/.hermes/.env` instead of `~/.config/nest/.env`.
+
+## For Humans
+
+See [SKILL.md](./SKILL.md) for full setup guide, API reference, and troubleshooting.
